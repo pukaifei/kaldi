@@ -34,6 +34,7 @@ bool SimpleDecoder::Decode(DecodableInterface *decodable) {
   InitDecoding();
   while( !decodable->IsLastFrame(num_frames_decoded_ - 1)) {
     ClearToks(prev_toks_);
+    //上一次的结果保存在cur_toks，赋值给prev_toks_
     cur_toks_.swap(prev_toks_);
     ProcessEmitting(decodable);
     ProcessNonemitting();
@@ -131,11 +132,13 @@ bool SimpleDecoder::GetBestPath(Lattice *fst_out, bool use_final_probs) const {
       if (best_tok == NULL || *best_tok < *(iter->second) )
         best_tok = iter->second;
   } else {
+    // 到达了终点，查找cost最小的tok
     double infinity =std::numeric_limits<double>::infinity(),
         best_cost = infinity;
     for (unordered_map<StateId, Token*>::const_iterator iter = cur_toks_.begin();
          iter != cur_toks_.end();
          ++iter) {
+      // 如果当前状态是终止状态
       double this_cost = iter->second->cost_ + fst_.Final(iter->first).Value();
       if (this_cost != infinity && this_cost < best_cost) {
         best_cost = this_cost;
@@ -145,6 +148,7 @@ bool SimpleDecoder::GetBestPath(Lattice *fst_out, bool use_final_probs) const {
   }
   if (best_tok == NULL) return false;  // No output.
 
+  // 由于tok保存了上个时刻状态的tok，找到整个路径上的tok
   std::vector<LatticeArc> arcs_reverse;  // arcs in reverse order.
   for (Token *tok = best_tok; tok != NULL; tok = tok->prev_)
     arcs_reverse.push_back(tok->arc_);
@@ -175,30 +179,46 @@ void SimpleDecoder::ProcessEmitting(DecodableInterface *decodable) {
   // Processes emitting arcs for one frame.  Propagates from
   // prev_toks_ to cur_toks_.
   double cutoff = std::numeric_limits<BaseFloat>::infinity();
+  // 当前已经走到的状态，第一轮：从开始状态可以跳转的状态
   for (unordered_map<StateId, Token*>::iterator iter = prev_toks_.begin();
        iter != prev_toks_.end();
        ++iter) {
     StateId state = iter->first;
     Token *tok = iter->second;
     KALDI_ASSERT(state == tok->arc_.nextstate);
+    // 从第一帧的状态跳转到第二帧
     for (fst::ArcIterator<fst::Fst<StdArc> > aiter(fst_, state);
          !aiter.Done();
          aiter.Next()) {
       const StdArc &arc = aiter.Value();
       if (arc.ilabel != 0) {  // propagate..
+        // ilabel: transition-id, decodable内部转成对应的pdf-id(每个(pdf-id, hmm_state)对应一个GMM，根据当前的特征得到发射概率)
+        // transition-id表征: 从某个triphone hmm状态，转到另一个triphone hmm状态;eg: SIL hmm_state0-> SIL hmm_state1
+        // pdf-id表征：pdf-id经过了状态聚类，多个triphone的hmm状态可能共享同一个pdf(概率密度函数）
+        // 在当前的triphone hmm状态下，产生该声学特征的概率（观察似然，发射概率)
+        // 比如：某种天气下吃雪糕的概率，hmm_state等价于天气
+        // 取的是-log，即概率越大，权重越小
         BaseFloat acoustic_cost = -decodable->LogLikelihood(frame, arc.ilabel);
+        // arc.weight.Value: 状态转移的概率
+        // acoustic_cost: 声学概率(发射概率)
         double total_cost = tok->cost_ + arc.weight.Value() + acoustic_cost;
         
         if (total_cost > cutoff) continue;
         if (total_cost + beam_  < cutoff)
           cutoff = total_cost + beam_;
+        // arc: 起始状态和终止状态，路径上的概率
+        // acoustic_cost: 声学概率
+        // tok: 上一个令牌
         Token *new_tok = new Token(arc, acoustic_cost, tok);
+        // cur_toks在某时刻初始处理时，为空
+        // 当下个状态已经有令牌在保存在cur_toks_时
         unordered_map<StateId, Token*>::iterator find_iter
             = cur_toks_.find(arc.nextstate);
         if (find_iter == cur_toks_.end()) {
           cur_toks_[arc.nextstate] = new_tok;
         } else {
           if ( *(find_iter->second) < *new_tok ) {
+            // 删除旧的，保存新的权重小的，即概率大的
             Token::TokenDelete(find_iter->second);
             find_iter->second = new_tok;
           } else {
@@ -221,6 +241,7 @@ void SimpleDecoder::ProcessNonemitting() {
        iter != cur_toks_.end();
        ++iter) {
     queue_.push_back(iter->first);
+        //
     best_cost = std::min(best_cost, iter->second->cost_);
   }
   double cutoff = best_cost + beam_;
@@ -275,10 +296,13 @@ void SimpleDecoder::PruneToks(BaseFloat beam, unordered_map<StateId, Token*> *to
     KALDI_VLOG(2) <<  "No tokens to prune.\n";
     return;
   }
+  // 找到到当前时刻，路径权重的最小值
   double best_cost = std::numeric_limits<double>::infinity();
   for (unordered_map<StateId, Token*>::iterator iter = toks->begin();
        iter != toks->end(); ++iter)
     best_cost = std::min(best_cost, iter->second->cost_);
+
+  // 保存保留的状态
   std::vector<StateId> retained;
   double cutoff = best_cost + beam;
   for (unordered_map<StateId, Token*>::iterator iter = toks->begin();

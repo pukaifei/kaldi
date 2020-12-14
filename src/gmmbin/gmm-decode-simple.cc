@@ -135,6 +135,8 @@ int main(int argc, char *argv[]) {
         LatticeWeight weight;
         frame_count += features.NumRows();
 
+        // alignment: 最佳路径的transition-id
+        // words: 最佳路径的words-id
         GetLinearSymbolSequence(decoded, &alignment, &words, &weight);
 
         words_writer.Write(utt, words);

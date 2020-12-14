@@ -209,6 +209,7 @@ bool GetLinearSymbolSequence(const Fst<Arc> &fst,
       const Arc &arc = iter.Value();
       tot_weight = Times(arc.weight, tot_weight);
       if (arc.ilabel != 0) ilabel_seq.push_back(arc.ilabel);
+      // olabel是word-id，保存整个路径的word-id
       if (arc.olabel != 0) olabel_seq.push_back(arc.olabel);
       cur_state = arc.nextstate;
     }

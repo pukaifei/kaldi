@@ -36,6 +36,7 @@ FasterDecoder::FasterDecoder(const fst::Fst<fst::StdArc> &fst,
 void FasterDecoder::InitDecoding() {
   // clean up from last time:
   ClearToks(toks_.Clear());
+  //构造结构体时传入
   StateId start_state = fst_.Start();
   KALDI_ASSERT(start_state != fst::kNoStateId);
   Arc dummy_arc(0, 0, Weight::One(), start_state);
@@ -317,11 +318,15 @@ void FasterDecoder::ProcessNonemitting(double cutoff) {
       continue;
     }
     KALDI_ASSERT(tok != NULL && state == tok->arc_.nextstate);
+    //以token中的state为起始状态的路径arc
     for (fst::ArcIterator<fst::Fst<Arc> > aiter(fst_, state);
          !aiter.Done();
          aiter.Next()) {
       const Arc &arc = aiter.Value();
+      //arc没有输入lable，空边
       if (arc.ilabel == 0) {  // propagate nonemitting only...
+        //arc: 起点，终点，权重，ilabel, olabel
+        //tok: 上一个tok和arc，计算到当前节点的tok(cost)
         Token *new_tok = new Token(arc, tok);
         if (new_tok->cost_ > cutoff) {  // prune
           Token::TokenDelete(new_tok);
@@ -329,9 +334,9 @@ void FasterDecoder::ProcessNonemitting(double cutoff) {
           Elem *e_found = toks_.Find(arc.nextstate);
           if (e_found == NULL) {
             toks_.Insert(arc.nextstate, new_tok);
-            queue_.push_back(arc.nextstate);
+            queue_.push_back(arc.nextstate); //需要对新加入的状态，进行空边处理
           } else {
-            if ( *(e_found->val) < *new_tok ) {
+            if ( *(e_found->val) < *new_tok ) { //新的token cost更好
               Token::TokenDelete(e_found->val);
               e_found->val = new_tok;
               queue_.push_back(arc.nextstate);

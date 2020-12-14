@@ -106,6 +106,7 @@ class DecodableAmDiagGmm: public DecodableAmDiagGmmUnmapped {
 
   // Note, frames are numbered from zero.
   virtual BaseFloat LogLikelihood(int32 frame, int32 tid) {
+    // transition-id转成对应的pdf-id
     return LogLikelihoodZeroBased(frame,
                                   trans_model_.TransitionIdToPdf(tid));
   }
