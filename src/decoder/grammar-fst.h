@@ -45,6 +45,8 @@ namespace fst {
 // Obviously this leads to very high-numbered state indexes, which might be
 // a problem in some circumstances, but the decoder code doesn't store arrays
 // indexed by state, it uses hashes, so this isn't a problem.
+//
+// stateId的高32bit是上一层fst的instance-id，低32bit是当前fst的stateId
 struct GrammarFstArc {
   typedef fst::TropicalWeight Weight;
   typedef int Label;  // OpenFst's StdArc uses int; this is for compatibility.
@@ -176,14 +178,19 @@ class GrammarFstTpl {
   Weight Final(StateId s) const {
     // If the fst-id (top 32 bits of s) is nonzero, this state is not final,
     // because we need to return to the top-level FST before we can be final.
+    // top 32bits 不是0，不是top fst，不是final state --> 返回Zero
     if (s != static_cast<StateId>(static_cast<int32>(s))) {
       return Weight::Zero();
     } else {
+      //是top fst，找到该state的weight
+      //用weight=4096作为top fst扩展的位置的标志（复用state的weight变量，保证不会有final state的weight为4096)
       BaseStateId base_state = static_cast<BaseStateId>(s);
       Weight ans = top_fst_->Final(base_state);
       if (ans.Value() == KALDI_GRAMMAR_FST_SPECIAL_WEIGHT) {
+        //如果是4096，则是扩展标记
         return Weight::Zero();
       } else {
+        //是top fst的final state
         return ans;
       }
     }
@@ -270,6 +277,9 @@ class GrammarFstTpl {
     // nonterminal_index, making the 'nonterminal_index' in the key *usually*
     // redundant, but in principle it could happen that two user-defined
     // nonterminals might share the same return-state.
+    //
+    // pkf: <nonterminal_index, return_state>
+    // 当遇到一个扩展的边，用这个pair去查找是否这个fst对应的instance已存在
     std::unordered_map<int64, int32> child_instances;
 
     // The instance-id of the FST we return to when we are done with this one
@@ -472,11 +482,14 @@ class GrammarFstTpl {
   */
   inline std::shared_ptr<ExpandedState> GetExpandedState(int32 instance_id,
                                          BaseStateId state_id) {
+    
+      //找到当前instance_id对应的expanded_states队列的所在位置
     std::unordered_map<BaseStateId, std::shared_ptr<ExpandedState> > &expanded_states =
         instances_[instance_id].expanded_states;
 
     typename std::unordered_map<BaseStateId, std::shared_ptr<ExpandedState> >::iterator iter =
         expanded_states.find(state_id);
+
     if (iter != expanded_states.end()) {
       return iter->second;
     } else {
@@ -517,6 +530,7 @@ class ArcIterator<GrammarFstTpl<instance_FST > > {
     BaseStateId base_state = static_cast<int32>(s);
     const typename GrammarFstTpl<instance_FST >::FstInstance &instance = fst.instances_[instance_id];
     instance_FST *base_fst = instance.fst;
+
     if (base_fst->Final(base_state).Value() != KALDI_GRAMMAR_FST_SPECIAL_WEIGHT) {
       // A normal state
       dest_instance_ = instance_id;
