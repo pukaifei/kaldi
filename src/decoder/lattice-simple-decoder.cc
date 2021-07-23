@@ -252,11 +252,15 @@ void LatticeSimpleDecoder::PruneForwardLinks(
       BaseFloat tok_extra_cost = std::numeric_limits<BaseFloat>::infinity();
       for (link = tok->links; link != NULL; ) {
         // See if we need to excise this link...
+        // tok:t时刻，new_tok:t+1时刻
+        // next_tok->extra_cost: 第一次prune之前为0
+        // link_extra_cost: 路径的cost
         Token *next_tok = link->next_tok;
         BaseFloat link_extra_cost = next_tok->extra_cost +
             ((tok->tot_cost + link->acoustic_cost + link->graph_cost)
              - next_tok->tot_cost);
         KALDI_ASSERT(link_extra_cost == link_extra_cost); // check for NaN
+
         if (link_extra_cost > config_.lattice_beam) {  // excise link
           ForwardLink *next_link = link->next;
           if (prev_link != NULL) prev_link->next = next_link;
@@ -460,7 +464,9 @@ void LatticeSimpleDecoder::PruneTokensForFrame(int32 frame) {
 // where the delta-costs are not changing (and the delta controls when we consider
 // a cost to have "not changed").
 void LatticeSimpleDecoder::PruneActiveTokens(BaseFloat delta) {
+  // 当前已处理过的时刻的前一时刻
   int32 cur_frame_plus_one = NumFramesDecoded();  
+  // 当前所有时刻的Token数目
   int32 num_toks_begin = num_toks_;
   // The index "f" below represents a "frame plus one", i.e. you'd have to subtract
   // one to get the corresponding index for the decodable object.
@@ -471,6 +477,7 @@ void LatticeSimpleDecoder::PruneActiveTokens(BaseFloat delta) {
     //     
     if (active_toks_[f].must_prune_forward_links) {
       bool extra_costs_changed = false, links_pruned = false;
+      //prune上一时刻产生的ForwardLink
       PruneForwardLinks(f, &extra_costs_changed, &links_pruned, delta);
       if (extra_costs_changed && f > 0)
         active_toks_[f-1].must_prune_forward_links = true;

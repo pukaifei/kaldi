@@ -250,6 +250,8 @@ bool PruneLattice(BaseFloat beam, LatType *lat) {
   double best_final_cost = std::numeric_limits<double>::infinity();
   // Update the forward probs.
   // Thanks to Jing Zheng for finding a bug here.
+  // 走到每个state的最好的分数(不包括state的final分数)
+  // 以及所有路径里最好的分数(包括final分数）
   for (int32 state = 0; state < num_states; state++) {
     double this_forward_cost = forward_cost[state];
     for (fst::ArcIterator<LatType> aiter(*lat, state);
@@ -271,6 +273,7 @@ bool PruneLattice(BaseFloat beam, LatType *lat) {
   }
   int32 bad_state = lat->AddState(); // this state is not final.
   double cutoff = best_final_cost + beam;
+
 
   // Go backwards updating the backward probs (which share memory with the
   // forward probs), and pruning arcs and deleting final-probs.  We prune arcs
